@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,52 +19,45 @@ interface DownloadItem {
   cached: boolean;
 }
 
+interface StatsData {
+  totalDownloads: number;
+  cachedFiles: number;
+  savedSpace: string;
+  activeUsers: number;
+}
+
+const API_URL = 'https://functions.poehali.dev/d811f6bc-037a-4fbb-907a-d8d81a993ed5';
+
 const Index = () => {
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [history, setHistory] = useState<DownloadItem[]>([]);
+  const [stats, setStats] = useState<StatsData>({
+    totalDownloads: 0,
+    cachedFiles: 0,
+    savedSpace: '0 Б',
+    activeUsers: 0
+  });
   const { toast } = useToast();
 
-  const mockHistory: DownloadItem[] = [
-    {
-      id: '1',
-      url: 't.me/channel/123',
-      type: 'video',
-      title: 'Видео из канала TechNews',
-      date: '2 часа назад',
-      thumbnail: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400',
-      size: '24.5 МБ',
-      cached: true
-    },
-    {
-      id: '2',
-      url: 't.me/channel/124',
-      type: 'photo',
-      title: 'Фото подборка дня',
-      date: '5 часов назад',
-      thumbnail: 'https://images.unsplash.com/photo-1579762715118-a6f1d4b934f1?w=400',
-      size: '3.2 МБ',
-      cached: true
-    },
-    {
-      id: '3',
-      url: 't.me/channel/125',
-      type: 'video',
-      title: 'Обзор новинок',
-      date: 'Вчера',
-      thumbnail: 'https://images.unsplash.com/photo-1626544827763-d516dce335e2?w=400',
-      size: '45.8 МБ',
-      cached: false
-    }
-  ];
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const statsData = {
-    totalDownloads: 1247,
-    cachedFiles: 89,
-    savedSpace: '2.4 ГБ',
-    activeUsers: 3542
+  const loadData = async () => {
+    try {
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const data = await response.json();
+        setHistory(data.history || []);
+        setStats(data.stats || stats);
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки данных:', error);
+    }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!url.trim()) {
       toast({
         title: 'Ошибка',
@@ -75,14 +68,42 @@ const Index = () => {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      toast({
-        title: '✅ Готово!',
-        description: 'Материал загружен и доступен для скачивания'
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ url })
       });
-      setUrl('');
-    }, 2000);
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: data.cached ? '⚡ Из кэша!' : '✅ Готово!',
+          description: data.cached 
+            ? 'Материал загружен мгновенно из кэша'
+            : 'Материал загружен и доступен для скачивания'
+        });
+        setUrl('');
+        loadData();
+      } else {
+        toast({
+          title: 'Ошибка',
+          description: data.error || 'Не удалось загрузить материал',
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Ошибка сети',
+        description: 'Проверьте подключение к интернету',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -233,7 +254,13 @@ const Index = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {mockHistory.map((item) => (
+                {history.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Icon name="Inbox" size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>История загрузок пуста</p>
+                    <p className="text-sm mt-2">Скачайте первый файл, чтобы увидеть его здесь</p>
+                  </div>
+                ) : history.map((item) => (
                   <Card key={item.id} className="border hover:border-primary/50 transition-colors">
                     <CardContent className="p-4">
                       <div className="flex gap-4">
@@ -286,7 +313,7 @@ const Index = () => {
                     <Icon name="TrendingUp" size={20} className="text-green-500" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{statsData.totalDownloads}</p>
+                    <p className="text-3xl font-bold">{stats.totalDownloads}</p>
                     <p className="text-sm text-muted-foreground">Всего загрузок</p>
                   </div>
                 </CardContent>
@@ -299,7 +326,7 @@ const Index = () => {
                     <Icon name="TrendingUp" size={20} className="text-green-500" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{statsData.cachedFiles}</p>
+                    <p className="text-3xl font-bold">{stats.cachedFiles}</p>
                     <p className="text-sm text-muted-foreground">Кэшированных файлов</p>
                   </div>
                 </CardContent>
@@ -312,7 +339,7 @@ const Index = () => {
                     <Icon name="TrendingDown" size={20} className="text-green-500" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{statsData.savedSpace}</p>
+                    <p className="text-3xl font-bold">{stats.savedSpace}</p>
                     <p className="text-sm text-muted-foreground">Сэкономлено места</p>
                   </div>
                 </CardContent>
@@ -325,7 +352,7 @@ const Index = () => {
                     <Icon name="TrendingUp" size={20} className="text-green-500" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{statsData.activeUsers}</p>
+                    <p className="text-3xl font-bold">{stats.activeUsers}</p>
                     <p className="text-sm text-muted-foreground">Активных пользователей</p>
                   </div>
                 </CardContent>
