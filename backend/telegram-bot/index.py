@@ -158,52 +158,32 @@ def handle_command(chat_id: int, text: str, bot_token: str, db_conn):
 def handle_download(chat_id: int, url: str, bot_token: str, db_conn, user_id: int):
     """Обработка запроса на скачивание"""
     
-    send_message(chat_id, '⏳ Обрабатываю ссылку...', bot_token)
+    send_message(chat_id, '⏳ Получаю файл из Telegram...', bot_token)
     
     existing = check_cache(db_conn, url)
     
-    if existing:
+    if existing and existing.get('file_id'):
         update_download_count(db_conn, existing['id'])
         update_user_downloads(db_conn, user_id, existing['id'])
         
-        send_message(chat_id,
-            f'⚡ *Из кэша!*\n\n'
-            f'📄 {existing["title"]}\n'
-            f'💾 Размер: {format_file_size(existing["file_size"])}\n\n'
-            f'Файл загружен мгновенно благодаря кэшированию!',
-            bot_token,
-            parse_mode='Markdown'
-        )
-        
-        if existing.get('thumbnail_url'):
-            send_photo(chat_id, existing['thumbnail_url'], bot_token)
+        send_cached_media(chat_id, existing, bot_token)
     else:
-        media_info = extract_telegram_media(url, bot_token)
+        media_info = get_telegram_file(url, bot_token, chat_id)
         
         if media_info:
             download_id = save_to_database(db_conn, url, media_info)
             update_user_downloads(db_conn, user_id, download_id)
             
-            send_message(chat_id,
-                f'✅ *Готово!*\n\n'
-                f'📄 {media_info["title"]}\n'
-                f'💾 Размер: {format_file_size(media_info["size"])}\n'
-                f'📱 Тип: {media_info["type"]}\n\n'
-                f'Файл сохранён и добавлен в кэш!',
-                bot_token,
-                parse_mode='Markdown'
-            )
-            
-            if media_info.get('thumbnail'):
-                send_photo(chat_id, media_info['thumbnail'], bot_token)
+            send_downloaded_media(chat_id, media_info, bot_token)
         else:
             send_message(chat_id,
                 '❌ *Ошибка загрузки*\n\n'
                 'Не удалось получить медиа. Возможные причины:\n'
                 '• Неверная ссылка\n'
                 '• Канал недоступен\n'
+                '• Бот не добавлен в канал\n'
                 '• Файл удалён\n\n'
-                'Попробуй другую ссылку!',
+                '💡 Добавь бота в канал как администратора для доступа к файлам!',
                 bot_token,
                 parse_mode='Markdown'
             )
@@ -231,18 +211,64 @@ def send_message(chat_id: int, text: str, bot_token: str, parse_mode: str = None
         print(f'Error sending message: {str(e)}')
 
 
-def send_photo(chat_id: int, photo_url: str, bot_token: str):
+def send_photo(chat_id: int, photo: str, bot_token: str, caption: str = None):
     """Отправка фото пользователю"""
     url = f'https://api.telegram.org/bot{bot_token}/sendPhoto'
     payload = {
         'chat_id': chat_id,
-        'photo': photo_url
+        'photo': photo
     }
     
+    if caption:
+        payload['caption'] = caption
+        payload['parse_mode'] = 'Markdown'
+    
     try:
-        requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=30)
+        return response.json()
     except Exception as e:
         print(f'Error sending photo: {str(e)}')
+        return None
+
+
+def send_video(chat_id: int, video: str, bot_token: str, caption: str = None):
+    """Отправка видео пользователю"""
+    url = f'https://api.telegram.org/bot{bot_token}/sendVideo'
+    payload = {
+        'chat_id': chat_id,
+        'video': video
+    }
+    
+    if caption:
+        payload['caption'] = caption
+        payload['parse_mode'] = 'Markdown'
+    
+    try:
+        response = requests.post(url, json=payload, timeout=30)
+        return response.json()
+    except Exception as e:
+        print(f'Error sending video: {str(e)}')
+        return None
+
+
+def send_document(chat_id: int, document: str, bot_token: str, caption: str = None):
+    """Отправка документа пользователю"""
+    url = f'https://api.telegram.org/bot{bot_token}/sendDocument'
+    payload = {
+        'chat_id': chat_id,
+        'document': document
+    }
+    
+    if caption:
+        payload['caption'] = caption
+        payload['parse_mode'] = 'Markdown'
+    
+    try:
+        response = requests.post(url, json=payload, timeout=30)
+        return response.json()
+    except Exception as e:
+        print(f'Error sending document: {str(e)}')
+        return None
 
 
 def set_webhook(bot_token: str, webhook_url: str):
@@ -335,7 +361,7 @@ def check_cache(conn, url: str):
     if row:
         return {
             'id': row[0],
-            'file_path': row[1],
+            'file_id': row[1],
             'thumbnail_url': row[2],
             'file_size': row[3],
             'media_type': row[4],
@@ -360,36 +386,117 @@ def update_download_count(conn, download_id: int):
     cursor.close()
 
 
-def extract_telegram_media(url: str, bot_token: str):
-    """Извлечение информации о медиа"""
+def get_telegram_file(url: str, bot_token: str, forward_to_chat: int):
+    """Получение файла из Telegram через пересылку"""
     import re
     
-    message_id = None
-    channel = None
-    
     match = re.search(r't\.me/([^/\?]+)/(\d+)', url)
-    if match:
-        channel = match.group(1)
-        message_id = match.group(2)
-    
-    if not message_id or not channel:
+    if not match:
         return None
     
-    title = f"Медиа из {channel}"
+    channel = match.group(1)
+    message_id = match.group(2)
     
-    return {
-        'type': 'video',
-        'title': title,
-        'file_url': url,
-        'thumbnail': 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400',
-        'size': 1024000
+    from_chat = f'@{channel}' if not channel.startswith('-') else channel
+    
+    api_url = f'https://api.telegram.org/bot{bot_token}/forwardMessage'
+    payload = {
+        'chat_id': forward_to_chat,
+        'from_chat_id': from_chat,
+        'message_id': int(message_id)
     }
+    
+    try:
+        response = requests.post(api_url, json=payload, timeout=15)
+        result = response.json()
+        
+        if not result.get('ok'):
+            return None
+        
+        message = result.get('result', {})
+        
+        if message.get('photo'):
+            photo = message['photo'][-1]
+            return {
+                'type': 'photo',
+                'title': f'Фото из {channel}',
+                'file_id': photo['file_id'],
+                'file_url': url,
+                'size': photo.get('file_size', 0)
+            }
+        
+        elif message.get('video'):
+            video = message['video']
+            return {
+                'type': 'video',
+                'title': f'Видео из {channel}',
+                'file_id': video['file_id'],
+                'file_url': url,
+                'size': video.get('file_size', 0),
+                'duration': video.get('duration', 0)
+            }
+        
+        elif message.get('document'):
+            doc = message['document']
+            return {
+                'type': 'document',
+                'title': doc.get('file_name', f'Файл из {channel}'),
+                'file_id': doc['file_id'],
+                'file_url': url,
+                'size': doc.get('file_size', 0)
+            }
+        
+        return None
+        
+    except Exception as e:
+        print(f'Error getting Telegram file: {str(e)}')
+        return None
+
+
+def send_cached_media(chat_id: int, media: dict, bot_token: str):
+    """Отправка медиа из кэша"""
+    caption = f'⚡ *Из кэша!*\n\n📄 {media["title"]}\n💾 Размер: {format_file_size(media.get("file_size", 0))}'
+    
+    media_type = media.get('media_type', 'photo')
+    file_id = media.get('file_id')
+    
+    if not file_id:
+        send_message(chat_id, caption, bot_token, parse_mode='Markdown')
+        return
+    
+    if media_type == 'photo':
+        send_photo(chat_id, file_id, bot_token, caption)
+    elif media_type == 'video':
+        send_video(chat_id, file_id, bot_token, caption)
+    else:
+        send_document(chat_id, file_id, bot_token, caption)
+
+
+def send_downloaded_media(chat_id: int, media: dict, bot_token: str):
+    """Отправка скачанного медиа"""
+    caption = f'✅ *Готово!*\n\n📄 {media["title"]}\n💾 Размер: {format_file_size(media.get("size", 0))}'
+    
+    media_type = media.get('type', 'photo')
+    file_id = media.get('file_id')
+    
+    if not file_id:
+        send_message(chat_id, caption, bot_token, parse_mode='Markdown')
+        return
+    
+    if media_type == 'photo':
+        send_photo(chat_id, file_id, bot_token, caption)
+    elif media_type == 'video':
+        send_video(chat_id, file_id, bot_token, caption)
+    else:
+        send_document(chat_id, file_id, bot_token, caption)
 
 
 def save_to_database(conn, url: str, media_info: dict) -> int:
     """Сохранение в базу данных"""
     schema = os.environ.get('MAIN_DB_SCHEMA', 'public')
     cursor = conn.cursor()
+    
+    file_id = media_info.get('file_id', '')
     
     cursor.execute(f"""
         INSERT INTO {schema}.downloads (url, media_type, title, file_path, file_size, thumbnail_url, cached)
@@ -399,8 +506,8 @@ def save_to_database(conn, url: str, media_info: dict) -> int:
         url,
         media_info['type'],
         media_info['title'],
-        media_info['file_url'],
-        media_info['size'],
+        file_id,
+        media_info.get('size', 0),
         media_info.get('thumbnail'),
         True
     ))
