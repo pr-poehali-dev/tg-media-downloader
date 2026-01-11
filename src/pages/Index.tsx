@@ -433,18 +433,51 @@ const Index = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Icon name="Rocket" size={24} />
-                  Создать своего бота
+                  <Icon name="Bot" size={24} />
+                  Telegram Bot
                 </CardTitle>
                 <CardDescription>
-                  Разверните собственную копию бота для вашей команды
+                  Подключите бота в Telegram мессенджере
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <Button className="w-full gap-2" size="lg">
-                  <Icon name="Copy" size={20} />
-                  Клонировать бота
-                </Button>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Webhook URL:</p>
+                  <div className="flex gap-2">
+                    <Input 
+                      value="https://functions.poehali.dev/d5516f0e-2c7a-4b63-bc40-104c9246c918"
+                      readOnly
+                      className="font-mono text-xs"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://functions.poehali.dev/d5516f0e-2c7a-4b63-bc40-104c9246c918');
+                        toast({ title: 'Скопировано!', description: 'URL скопирован в буфер обмена' });
+                      }}
+                    >
+                      <Icon name="Copy" size={16} />
+                    </Button>
+                  </div>
+                </div>
+                <div className="bg-muted/50 p-4 rounded-lg space-y-2 text-sm">
+                  <p className="font-medium">📱 Как настроить:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                    <li>Скопируй Webhook URL выше</li>
+                    <li>Открой: https://functions.poehali.dev/d5516f0e-2c7a-4b63-bc40-104c9246c918?action=set_webhook&url=WEBHOOK_URL</li>
+                    <li>Замени WEBHOOK_URL на скопированный адрес</li>
+                    <li>Найди своего бота в Telegram и отправь /start</li>
+                  </ol>
+                </div>
+                <div className="bg-primary/10 p-4 rounded-lg">
+                  <p className="text-sm font-medium mb-2">✨ Команды бота:</p>
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    <p><code className="bg-background px-2 py-0.5 rounded">/start</code> - начать работу</p>
+                    <p><code className="bg-background px-2 py-0.5 rounded">/help</code> - справка</p>
+                    <p><code className="bg-background px-2 py-0.5 rounded">/stats</code> - статистика</p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -467,12 +500,25 @@ const Index = () => {
                       <CardTitle className="text-lg">Как использовать бота?</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
-                        <li>Найдите нужный материал в Telegram канале</li>
-                        <li>Скопируйте ссылку на пост с видео или фото</li>
-                        <li>Вставьте ссылку в поле на главной странице</li>
-                        <li>Нажмите "Скачать" и дождитесь завершения</li>
-                      </ol>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="font-medium text-sm mb-2">💻 Веб-интерфейс:</p>
+                          <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+                            <li>Скопируй ссылку на медиа из Telegram</li>
+                            <li>Вставь в поле на главной странице</li>
+                            <li>Нажми "Скачать"</li>
+                          </ol>
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm mb-2">📱 Telegram мессенджер:</p>
+                          <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+                            <li>Настрой webhook (см. раздел Настройки)</li>
+                            <li>Найди бота в Telegram</li>
+                            <li>Отправь /start</li>
+                            <li>Отправь ссылку на медиа</li>
+                          </ol>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
 
